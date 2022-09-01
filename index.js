@@ -18,7 +18,14 @@ mongoClient.connect().then(() => {
 
 server.post("/participants", async (req,res) => {
     const { name } = req.body
+
+    if(name == ""){
+        return res.sendStatus(422)
+    }
+
     try {
+
+
         await db.collection('participants').insertOne({
             name: name,
             lastStatus: Date.now()
@@ -34,7 +41,7 @@ server.post("/participants", async (req,res) => {
 
         res.sendStatus(201)
     } catch (err) {
-
+        res.sendStatus(500)
     }
 })
 
@@ -53,7 +60,62 @@ server.get("/participants", async (req,res) => {
     }
 })
 
+server.post("/messages", async (req,res) => {
+    const {to, text, type} = req.body
+    const user  = req.headers.user
+
+    try {
+        await db.collection('messages').insertOne({
+            from: user,
+            to: to,
+            text: text,
+            type: type,
+            time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+        })
+
+        res.sendStatus(201)
+    } catch (err) {
+        res.sendStatus(500)
+    }
+})
+
+server.get('/messages', async (req,res) => {
+    const user = req.headers.user
+    const limit = req.query.limit
+
+    try {
+        const messagesRaw = await db.collection("messages").find().toArray();
+        const messages = messagesRaw.map(msg => {
+            return{
+                from: msg.from,
+                to: msg.to,
+                text: msg.text,
+                type: msg.type,
+                time: msg.time
+            }
+        })
+        
+            const messagesFilter = messages.filter(msg => {
+                if(msg.type === "private_message"){
+                    return (msg.to === user || msg.from === user || msg.to === 'Todos')
+                } else {
+                    return true
+                }
+            })
+
+        if(limit) {
+            res.send(messagesFilter.slice(-limit))
+        } else {
+            res.send(messagesFilter)
+        }
+    } catch (err) {
+        res.sendStatus(500)
+    }
+})
 
 
 
-server.listen(5000)
+
+server.listen(5000, () => {
+    console.log("On at 5000");
+})
