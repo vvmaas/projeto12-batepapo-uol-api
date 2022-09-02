@@ -3,6 +3,8 @@ import cors from 'cors'
 import { MongoClient } from 'mongodb'
 import dotenv from 'dotenv'
 import dayjs from 'dayjs'
+import joi from 'joi'
+import Joi from 'joi'
 dotenv.config()
 
 const server = express()
@@ -16,15 +18,32 @@ mongoClient.connect().then(() => {
     db = mongoClient.db('batepapo-uol')
 })
 
+const messageSchema = joi.object({
+    to: Joi.string().min(1).required(),
+    text: Joi.string().min(1).required(),
+    type: Joi.string().valid('message', 'private_message').required()
+})
+
+const participantSchema = joi.object({
+    name: Joi.string().min(1).required()
+})
+
 server.post("/participants", async (req,res) => {
     const { name } = req.body
 
-    if(name == ""){
+    const {error, value} = participantSchema.validate(req.body)
+
+    if(error){
         return res.sendStatus(422)
     }
 
-    try {
+    const nameTaken = await db.collection('participants').findOne({name: name})
 
+    if(nameTaken){
+        return res.sendStatus(409)
+    }
+
+    try {
 
         await db.collection('participants').insertOne({
             name: name,
@@ -63,6 +82,18 @@ server.get("/participants", async (req,res) => {
 server.post("/messages", async (req,res) => {
     const {to, text, type} = req.body
     const user  = req.headers.user
+
+    const {error, value} = messageSchema.validate(req.body)
+
+    if(error){
+        return res.sendStatus(422)
+    }
+
+    const isHere = await db.collection('participants').findOne({name: user})
+
+    if(!isHere){
+        return res.sendStatus(422)
+    }
 
     try {
         await db.collection('messages').insertOne({
@@ -108,6 +139,26 @@ server.get('/messages', async (req,res) => {
         } else {
             res.send(messagesFilter)
         }
+    } catch (err) {
+        res.sendStatus(500)
+    }
+})
+
+server.post("/status", async (req,res) => {
+    const user = req.headers.user
+
+    try {
+        const isHere = await db.collection('participants').find({name: user})
+
+        if(!isHere){
+            res.sendStatus(404)
+        } else {
+            await db.collection('participants').updateOne({name: user},
+                {
+                    $set: {lastStatus: Date.now()}
+                })
+        }
+        res.sendStatus(200)
     } catch (err) {
         res.sendStatus(500)
     }
