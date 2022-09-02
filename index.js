@@ -28,6 +28,23 @@ const participantSchema = joi.object({
     name: Joi.string().min(1).required()
 })
 
+setInterval(async () => {
+    const list = await db.collection('participants').find().toArray()
+    list.map(user => {
+        if(user.lastStatus < Date.now()-10000){
+             db.collection('participants').deleteOne({name: user.name})
+             db.collection('messages').insertOne({
+                from: user.name,
+                to: "Todos",
+                text: "sai da sala...",
+                type: 'status',
+                time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+            })
+        }
+    }
+    )
+}, 15000)
+
 server.post("/participants", async (req,res) => {
     const { name } = req.body
 
@@ -163,9 +180,6 @@ server.post("/status", async (req,res) => {
         res.sendStatus(500)
     }
 })
-
-
-
 
 server.listen(5000, () => {
     console.log("On at 5000");
