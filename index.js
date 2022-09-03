@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import { MongoClient } from 'mongodb'
+import { MongoClient, ObjectId } from 'mongodb'
 import dotenv from 'dotenv'
 import dayjs from 'dayjs'
 import joi from 'joi'
@@ -22,6 +22,12 @@ const messageSchema = joi.object({
     to: Joi.string().min(1).required(),
     text: Joi.string().min(1).required(),
     type: Joi.string().valid('message', 'private_message').required()
+})
+
+const messagePutSchema = joi.object({
+    to: Joi.string().min(1),
+    text: Joi.string().min(1),
+    type: Joi.string().valid('message', 'private_message')
 })
 
 const participantSchema = joi.object({
@@ -135,6 +141,7 @@ server.get('/messages', async (req,res) => {
         const messagesRaw = await db.collection("messages").find().toArray();
         const messages = messagesRaw.map(msg => {
             return{
+                _id: msg._id,
                 from: msg.from,
                 to: msg.to,
                 text: msg.text,
@@ -178,6 +185,64 @@ server.post("/status", async (req,res) => {
         res.sendStatus(200)
     } catch (err) {
         res.sendStatus(500)
+    }
+})
+
+server.delete('/messages/:msgId', async (req,res) => {
+    const {msgId} = req.params
+    const user = req.headers.user
+
+    try {
+        const message = await db.collection('messages').findOne({ _id: new ObjectId(msgId)})
+
+        if(!message){
+            return res.sendStatus(404)
+        }
+        if(message.from !== user){
+            return res.sendStatus(401)
+        }
+
+        await db.collection('messages').deleteOne({ _id: new ObjectId(msgId)})
+
+        res.sendStatus(200)
+    } catch (err) {
+        console.log(err)
+        return res.sendStatus(500)
+    }
+})
+
+server.put('/messages/:msgId', async (req,res) => {
+    const {msgId} = req.params
+    const from = req.headers.user
+
+    const {error, value} = messagePutSchema.validate(req.body)
+
+    if(error){
+        return res.sendStatus(422)
+    }
+
+    const isHere = await db.collection('participants').findOne({name: from})
+
+    if(!isHere){
+        return res.sendStatus(422)
+    }
+
+    try {
+        const message = await db.collection('messages').findOne({ _id: new ObjectId(msgId)})
+
+        if(!message){
+            return res.sendStatus(404)
+        }
+        if(message.from !== from){
+            return res.sendStatus(401)
+        }
+
+        await db.collection('messages').updateOne({ _id: new ObjectId(msgId)}, {$set: req.body})
+
+        res.sendStatus(200)
+    } catch (err) {
+        console.log(err)
+        return res.sendStatus(500)
     }
 })
 
